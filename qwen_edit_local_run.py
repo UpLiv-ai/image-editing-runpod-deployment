@@ -16,6 +16,8 @@ import os
 import random
 from PIL import Image
 import torch
+torch.cuda.empty_cache()
+
 
 # Try to import the Qwen pipeline and optional prompt polish helper.
 # The demo repo had `from diffusers import QwenImageEditPipeline` and tools.prompt_utils.polish_edit_prompt
@@ -26,11 +28,12 @@ except Exception:
     polish_edit_prompt = None  # fall back if function not present
 
 # ----------------- Config -----------------
-MODEL_PATH = "workspace/models/qwen-image-edit"   # local model directory (same as your demo)
+MODEL_PATH = "/workspace/models/qwen-image-edit"   # local model directory (same as your demo)
 INPUT_IMAGE = "Test_of_Qwen.png"                  # input filename in current directory
 OUTPUT_BASENAME = "Test_of_Qwen_output"           # output prefix (will append _0.png etc)
 PROMPT = "Convert this into 3d claymation-esk version of the main object in the image."
 NEGATIVE_PROMPT = " "   # hardcoded empty negative prompt as in your demo
+OFFLOAD_FOLDER = "/mnt/offload"   # make sure this exists and is writable
 
 # Inference hyperparams (adjust if needed)
 NUM_INFERENCE_STEPS = 50
@@ -47,7 +50,13 @@ print(f"Device: {device}, dtype: {dtype}")
 
 # ----------------- Load pipeline -----------------
 print(f"Loading pipeline from: {MODEL_PATH} ... (this may take a while)")
-pipe = QwenImageEditPipeline.from_pretrained(MODEL_PATH, torch_dtype=dtype)
+pipe = QwenImageEditPipeline.from_pretrained(
+    MODEL_PATH,
+    torch_dtype=dtype,
+    device_map="auto",
+    offload_folder=OFFLOAD_FOLDER,
+    low_cpu_mem_usage=True,   # helps reduce memory during load
+)
 pipe = pipe.to(device)
 pipe.safety_checker = None  # optional: disable safety checker if not needed or not available
 
