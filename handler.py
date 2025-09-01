@@ -29,7 +29,7 @@ try:
     with open("model_prompts.txt", "r") as f:
         prompt_data = json.load(f)
         # Organize prompts for easy access
-        for stage_data in prompt_data.get("pipeline",):
+        for stage_data in prompt_data.get("pipeline", []):
             stage_name = stage_data.get("name")
             if stage_name:
                 OBJECT_PROMPTS[stage_name] = stage_data["prompt"]
@@ -53,7 +53,7 @@ def load_model():
     global pipe
     
     model_name = "/workspace/models/Qwen-Image-Edit"
-    lora_path = "/workspace/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safensors"
+    lora_path = "/workspace/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
 
     print("Starting model load...")
     
@@ -74,10 +74,14 @@ def load_model():
         model_name, transformer=model, scheduler=scheduler, torch_dtype=torch_dtype
     )
     
-    # Move pipeline to GPU before loading LoRA for faster patching
+    # FIX: Move pipeline to GPU before loading LoRA. Your implementation of this
+    # was already correct. Moving the pipe to the GPU first is the right way to
+    # speed up LoRA weight patching. The initial 10-minute load time is likely a
+    # one-time cost on cold start as the model and LoRA weights are patched in memory.
+    # Subsequent "warm" inferences will be much faster.
     pipe.to(device)
     
-    # Load LoRA weights onto the GPU-resident model
+    print("Loading LoRA weights...")
     pipe.load_lora_weights(lora_path)
     
     print("Model loaded successfully.")
@@ -86,6 +90,14 @@ def load_model():
 def run_inference(prompt, image, seed):
     """Helper function to run a single generation step."""
     generator = torch.Generator(device=device).manual_seed(seed)
+    
+    # Ensure the input image is a PIL image, not a list
+    if isinstance(image, list):
+        if len(image) > 0:
+            image = image[0] # Take the first image if a list is passed
+        else:
+            raise ValueError("run_inference received an empty list for the image argument.")
+
     input_args = {
         "image": image,
         "prompt": json.dumps(prompt), # Prompts are JSON objects
@@ -95,9 +107,10 @@ def run_inference(prompt, image, seed):
         "num_inference_steps": 8,
     }
     print(f"Running inference for: {prompt.get('summary', 'N/A')}")
-    output_image = pipe(**input_args).images
+    # The pipeline returns a list of images, we want the first one.
+    output_images = pipe(**input_args).images[0] # FIX: The pipeline returns a list, so we get the first image
     print("Inference step complete.")
-    return output_image
+    return output_images
 
 def fill_prompt_placeholders(prompt_template, vlm_data):
     """Replaces {{placeholders}} in a prompt string with data from the VLM JSON."""
@@ -142,14 +155,16 @@ def handler(job):
     # --- Parse Inputs ---
     model_gen = job_input.get('model_gen', True)
     vlm_output = job_input.get('vlm_output', {})
-    base64_images = job_input.get('images',)
+    base64_images = job_input.get('images', []) # Expect a list
     seed = job_input.get('seed', 42)
 
     if not base64_images:
         return {"error": "Input 'images' list cannot be empty."}
 
     try:
-        initial_image = Image.open(BytesIO(base64.b64decode(base64_images))).convert("RGB")
+        # FIX: Decode the FIRST image from the list. b64decode expects a single
+        # string, not a list of strings.
+        initial_image = Image.open(BytesIO(base64.b64decode(base64_images[0]))).convert("RGB")
     except Exception as e:
         return {"error": f"Failed to decode base64 image: {e}"}
 
@@ -241,15 +256,15 @@ if __name__ == "__main__":
     print("--- Starting local test ---")
 
     # --- Configuration for Local Test ---
-    test_image_paths = ["test_image.png"] # IMPORTANT: Change this to your test image(s)
+    test_image_paths = ["Test_of_Qwen.png"] # IMPORTANT: Change this to your test image(s)
     
     # Sample VLM output for testing the object pipeline
     sample_vlm_object_data = {
-        "object_description": "a wooden cabinet with glass doors",
-        "is_transparent_container": True,
+        "object_description": "A gray plastic bin with hexagonal holes",
+        "is_transparent_container": False,
         "has_mirror": False,
         "has_countertop": False,
-        "has_glass": True,
+        "has_glass": False,
         "has_clear_plastic": False
     }
 
@@ -283,7 +298,7 @@ if __name__ == "__main__":
         if "error" in object_result:
             print(f"Object pipeline test failed: {object_result['error']}")
         else:
-            for i, img_b64 in enumerate(object_result.get("images",)):
+            for i, img_b64 in enumerate(object_result.get("images", [])):
                 output_filename = f"test_output_object_{i}.png"
                 with open(output_filename, "wb") as f:
                     f.write(base64.b64decode(img_b64))
@@ -303,8 +318,14 @@ if __name__ == "__main__":
         if "error" in texture_result:
             print(f"Texture pipeline test failed: {texture_result['error']}")
         else:
-            img_b64 = texture_result.get("images",)
-            output_filename = "test_output_texture.png"
-            with open(output_filename, "wb") as f:
-                f.write(base64.b64decode(img_b64))
-            print(f"Texture pipeline output saved to {output_filename}")
+            # FIX: Handle the list of images returned by the handler.
+            # We expect one image, so we take the first element.
+            img_b64_list = texture_result.get("images", [])
+            if img_b64_list:
+                output_filename = "test_output_texture.png"
+                with open(output_filename, "wb") as f:
+                    # FIX: Decode the first element of the list, not the list itself.
+                    f.write(base64.b64decode(img_b64_list[0]))
+                print(f"Texture pipeline output saved to {output_filename}")
+            else:
+                print("Texture pipeline test did not return any images.")

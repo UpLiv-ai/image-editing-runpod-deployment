@@ -1,218 +1,225 @@
-"pipeline": [
 {
-"stage": 1,
-"name": "isolate_and_reorient",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Crop / isolate the primary object inside the provided white bounding box, remove scene clutter, rotate / perspective to a 45° top-down right-corner view, place object on a uniform mid-gray void.",
-"instructions": "INPUT: a user-scanned image. Use the provided white bounding box (if present). If no explicit box, detect the primary object using the VLM field {{object_description}} and infer a tight mask. CRITICAL OBJECTIVE: THE STRUCTURE OF THE MAIN OBJECT MUST REMAIN COMPLETELY UNCHANGED — PRESERVE THE STRUCTURE AND PROPORTIONS OF THE OBJECT!! HOWEVER, ANY MOVABLE, DETACHABLE, OR LOOSE OBJECTS ON, AROUND, OR ATTACHED TO THE MAIN OBJECT (E.G., ACCESSORIES, TOOLS, PACKAGING, DEBRIS, COVERS, CABLES, OR EXTERNAL COMPONENTS NOT PERMANENTLY FIXED) MUST BE REMOVED DURING ISOLATION — EVEN IF THEY ARE INSIDE THE BOUNDING BOX OR CLOSE TO THE OBJECT, THE SAME FOR OTHER OBJECTS THAT ARE SEPARATE TO THE MAIN ONE(EVEN IF THEY ARE FIXED LIKE FLOORING OR CEILING). TASKS (do all): 1) Precisely isolate the primary object (exclude background and other items). 2) Crop to the isolated object with 5%–10% padding. 3) Re-orient the object so the camera viewpoint is a right-corner, 45° top-down perspective (approximate camera pitch = 45° top-down, yaw rotated to the object's right by ~45°). Use a clean perspective transform — do not distort proportions beyond perspective. 4) Center the transformed object in the frame and scale so it fills the canvas without clipping. 5) Replace background with a uniform neutral mid-gray void: hex #808080. 6) Preserve original surface materials and colors — do NOT perform any material replacements in this stage. 7) Output a high-resolution image (minimum 2x input resolution when possible), PNG, sRGB. DELIVERABLE: the isolated, rotated object on a uniform gray background with a precise alpha/mask embedded if the editor supports it.",
-"placeholders": {
-"object_description": "{{object_description}}"
-},
-"output_settings": {
-"background": "#808080",
-"canvas_padding_percent": 7,
-"perspective": {
-"pitch_degrees": 45,
-"yaw_degrees_right": 45
-},
-"format": "png",
-"preserve_alpha": true
+    "pipeline": [
+        {
+            "stage": 1,
+            "name": "isolate_and_reorient",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Crop / isolate the primary object inside the provided white bounding box, remove scene clutter, rotate / perspective to a 45° top-down right-corner view, place object on a uniform mid-gray void.",
+                "instructions": "INPUT: a user-scanned image. Use the provided white bounding box (if present). If no explicit box, detect the primary object using the VLM field {{object_description}} and infer a tight mask. CRITICAL OBJECTIVE: THE STRUCTURE OF THE MAIN OBJECT MUST REMAIN COMPLETELY UNCHANGED — PRESERVE THE STRUCTURE AND PROPORTIONS OF THE OBJECT!! HOWEVER, ANY MOVABLE, DETACHABLE, OR LOOSE OBJECTS ON, AROUND, OR ATTACHED TO THE MAIN OBJECT (E.G., ACCESSORIES, TOOLS, PACKAGING, DEBRIS, COVERS, CABLES, OR EXTERNAL COMPONENTS NOT PERMANENTLY FIXED) MUST BE REMOVED DURING ISOLATION — EVEN IF THEY ARE INSIDE THE BOUNDING BOX OR CLOSE TO THE OBJECT, THE SAME FOR OTHER OBJECTS THAT ARE SEPARATE TO THE MAIN ONE(EVEN IF THEY ARE FIXED LIKE FLOORING OR CEILING). TASKS (do all): 1) Precisely isolate the primary object (exclude background and other items). 2) Crop to the isolated object with 5%–10% padding. 3) Re-orient the object so the camera viewpoint is a right-corner, 45° top-down perspective (approximate camera pitch = 45° top-down, yaw rotated to the object's right by ~45°). Use a clean perspective transform — do not distort proportions beyond perspective. 4) Center the transformed object in the frame and scale so it fills the canvas without clipping. 5) Replace background with a uniform neutral mid-gray void: hex #808080. 6) Preserve original surface materials and colors — do NOT perform any material replacements in this stage. 7) Output a high-resolution image (minimum 2x input resolution when possible), PNG, sRGB. DELIVERABLE: the isolated, rotated object on a uniform gray background with a precise alpha/mask embedded if the editor supports it.",
+                "placeholders": {
+                    "object_description": "{{object_description}}"
+                },
+                "output_settings": {
+                    "background": "#808080",
+                    "canvas_padding_percent": 7,
+                    "perspective": {
+                        "pitch_degrees": 45,
+                        "yaw_degrees_right": 45
+                    },
+                    "format": "png",
+                    "preserve_alpha": true
+                }
+            }
+        },
+        {
+            "stage": 1.5,
+            "name": "interior_cavity_isolation",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Isolate the interior cavity of a transparent container (e.g., glass-front cabinet) when detected by VLM; remove all exterior shell and contents to produce a clean, empty interior render for later recomposition.",
+                "instructions": "INPUT: The Stage 1 image (isolated object on gray background). CONDITION: Only execute if the VLM field {{is_transparent_container}} is set to true. TASKS (do all): 1) Detect the interior cavity using the VLM field {{object_description}} and input image(s). If multiple views are provided, fuse them to infer a consistent 3D interior geometry. Infer a precise mask of the cavity space. 2) Remove the entire exterior shell: eliminate outer frames, edges, legs, feet, base trims, and any surfaces that are part of the exterior-only structure. Do NOT remove fixed internal components such as shelves, dividers, or back panels — these must remain visible. 3) Remove all removable contents from inside the cavity (e.g., bottles, boxes, utensils, decorative items) — produce a clean, empty interior. 4) Preserve the original surface materials, colors, and textures of the interior surfaces — do NOT alter, smooth, or stylize them. Maintain the same visual fidelity as in the original object. 5) Reorient the interior view to match the camera angle of the original object (same pitch, yaw, perspective) — maintain consistency with Stage 1 output. 6) Center the cavity in frame and scale to fill canvas without clipping. 7) Replace background with uniform mid-gray void: hex #808080. 8) Output a high-resolution PNG, sRGB, with embedded alpha/mask if supported. DELIVERABLE: A clean, empty interior cavity rendering — only structural interior elements visible, no exterior shell, no contents, no material changes.",
+                "placeholders": {
+                    "is_transparent_container": "{{is_transparent_container}}",
+                    "object_description": "{{object_description}}"
+                },
+                "output_settings": {
+                    "background": "#808080",
+                    "canvas_padding_percent": 7,
+                    "preserve_alpha": true,
+                    "format": "png",
+                    "min_resolution": ">=2x input"
+                }
+            }
+        },
+        {
+            "stage": 2,
+            "name": "material_tag_replacement_mirror_only",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Conditionally replace only mirrored/reflective surfaces with an opaque neon-blue tag color. Do NOT modify glass or clear plastic here; those are handled upstream by gpt-image-1.",
+                "instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_mirror}} == true. TASKS (do all when condition true):\n\n1) Detect mirrored surfaces (mirror panes, chrome-like areas that act as mirrors, highly specular planar reflections). Be conservative: only select pixels that visually correspond to mirror/true reflective surfaces. \n\n2) Replace each detected mirror region with a pure opaque neon blue tag color: hex #1E90FF. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag. \n\n3) Preserve all non-mirror materials exactly as they appear in Stage 1 (do NOT recolor glass, clear plastic, stainless steel, wood, paint, etc.). Glass and clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config. \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged. \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_mirror}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
+                "conditional_rules_example": {
+                    "if_has_mirror": "replace mirror pixels -> #1E90FF (opaque flat fill)",
+                    "do_not_modify": [
+                        "glass",
+                        "clear_plastic",
+                        "stainless_steel",
+                        "other_materials"
+                    ],
+                    "edge_feather_px": 1
+                },
+                "placeholders": {
+                    "has_mirror": "{{has_mirror}}",
+                    "has_stainless_steel": "{{has_stainless_steel}}"
+                },
+                "output_settings": {
+                    "format": "png",
+                    "color_space": "sRGB",
+                    "preserve_alpha": true,
+                    "tag_color_mirror": "#1E90FF",
+                    "tag_edge_feather_px_min": 1,
+                    "tag_edge_feather_px_max": 2,
+                    "background_keep": "#808080"
+                }
+            }
+        },
+        {
+            "stage": 2,
+            "name": "material_tag_replacement_countertop_only",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Conditionally replace only countertop surfaces with an opaque orange tag color.",
+                "instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_countertop}} == true. TASKS (do all when condition true):\n\n1) Detect countertop surfaces (patterned surfaces on top of counters). Be conservative: only select pixels that visually correspond to countertop. \n\n2) Replace each detected countertop region with a pure opaque orange tag color: hex #FF8000. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag. \n\n3) Preserve all non-countertop materials exactly as they appear in Stage 1 (do NOT recolor glass, clear plastic, stainless steel, wood, paint, etc.). Glass and clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config. \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged. \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_countertop}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
+                "conditional_rules_example": {
+                    "if_has_countertop": "replace countertop pixels -> #FF8000 (opaque flat fill)",
+                    "do_not_modify": [
+                        "glass",
+                        "clear_plastic",
+                        "stainless_steel",
+                        "other_materials"
+                    ],
+                    "edge_feather_px": 1
+                },
+                "placeholders": {
+                    "has_mirror": "{{has_mirror}}",
+                    "has_stainless_steel": "{{has_stainless_steel}}",
+                    "has_countertop": "{{has_countertop}}"
+                },
+                "output_settings": {
+                    "format": "png",
+                    "color_space": "sRGB",
+                    "preserve_alpha": true,
+                    "tag_color_countertop": "#FF8000",
+                    "tag_edge_feather_px_min": 1,
+                    "tag_edge_feather_px_max": 2,
+                    "background_keep": "#808080"
+                }
+            }
+        },
+        {
+            "stage": 2,
+            "name": "material_tag_replacement_glass_only",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Conditionally replace only glass surfaces with an opaque magenta tag color.",
+                "instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_glass}} == true. TASKS (do all when condition true):\n\n1) Detect glass surfaces (clear and transparent surfaces with some reflectiveness). YOU MUST BE CONSERVATIVE: YOU SHOULD ONLY SELECT PIXELS THAT VISUALLY CORRESPOND TO GLASS!! \n\n2) Replace each detected glass region with a pure opaque magenta tag color: hex #FF00FF. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag. \n\n3) Preserve all non-glass materials exactly as they appear in Stage 1 (do NOT recolor clear plastic, stainless steel, wood, paint, etc.). Everything else but glass MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config. \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged. \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_glass}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
+                "conditional_rules_example": {
+                    "if_has_glass": "replace glass pixels -> #FF00FF (opaque flat fill)",
+                    "do_not_modify": [
+                        "clear_plastic",
+                        "stainless_steel",
+                        "other_materials"
+                    ],
+                    "edge_feather_px": 1
+                },
+                "placeholders": {
+                    "has_glass": "{{has_glass}}",
+                    "has_stainless_steel": "{{has_stainless_steel}}",
+                    "has_countertop": "{{has_countertop}}"
+                },
+                "output_settings": {
+                    "format": "png",
+                    "color_space": "sRGB",
+                    "preserve_alpha": true,
+                    "tag_color_glass": "#FF00FF",
+                    "tag_edge_feather_px_min": 1,
+                    "tag_edge_feather_px_max": 2,
+                    "background_keep": "#808080"
+                }
+            }
+        },
+        {
+            "stage": 2,
+            "name": "material_tag_replacement_clear_plastic_only",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Conditionally replace only clear plastic surfaces with an opaque neon green tag color.",
+                "instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_clear_plastic}} == true. TASKS (do all when condition true):\n\n1) Detect clear plastic surfaces (clear and transparent surfaces with some reflectiveness and some matteness). YOU MUST BE CONSERVATIVE: YOU SHOULD ONLY SELECT PIXELS THAT VISUALLY CORRESPOND TO CLEAR PLASTIC!! \n\n2) Replace each detected clear plastic region with a pure opaque neon green tag color: hex #39FF14. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag. \n\n3) Preserve all non-clear-plastic materials exactly as they appear in Stage 1 (do NOT recolor glass, stainless steel, wood, paint, etc.). Everything else but clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config. \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged. \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_clear_plastic}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
+                "conditional_rules_example": {
+                    "if_has_clear_plastic": "replace clear plastic pixels -> #39FF14 (opaque flat fill)",
+                    "do_not_modify": [
+                        "glass",
+                        "mirror",
+                        "stainless_steel",
+                        "other_materials"
+                    ],
+                    "edge_feather_px": 1
+                },
+                "placeholders": {
+                    "has_glass": "{{has_glass}}",
+                    "has_clear_plastic": "{{has_clear_plastic}}",
+                    "has_countertop": "{{has_countertop}}"
+                },
+                "output_settings": {
+                    "format": "png",
+                    "color_space": "sRGB",
+                    "preserve_alpha": true,
+                    "tag_color_clear_plastic": "#39FF14",
+                    "tag_edge_feather_px_min": 1,
+                    "tag_edge_feather_px_max": 2,
+                    "background_keep": "#808080"
+                }
+            }
+        },
+        {
+            "stage": 3,
+            "name": "clean_and_soften_diffuse",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Soften forms, clean up contours, remove lighting and shadows for perfectly diffuse, even lighting; keep tag colors from Stage 2 visible; ensure shapes are smooth and slightly rounded.",
+                "instructions": "INPUT: the Stage 2 image (with any tag colors applied). TASKS (do all): 1) Remove all directional lighting, reflections, highlights, speculars and shadows — produce perfectly diffuse, even lighting across the object (no visible shadows). 2) Render in a soft, rounded 3D clay-like style with smooth shading, and no outlines. Geometry edges should be softened and slightly inflated, similar to a stylized product render. Avoid hard lines and ambient occlusion. 5) Remove any ambient occlusion or cast shadows; produce a neutral-looking product rendering that reads clearly on flat gray background (keep the same background #808080). 6) The output should be like a clean, rounded, clay-rendered object. 7) Output a high-detail PNG, sRGB, preserve alpha if available.",
+                "quality_constraints": {
+                    "lighting": "perfectly diffuse",
+                    "shadows": "none",
+                    "surface_noise": "remove",
+                    "edge_smoothness": "slightly rounded, natural",
+                    "retain_tags": true
+                },
+                "placeholders": {},
+                "output_settings": {
+                    "format": "png",
+                    "preserve_alpha": true,
+                    "min_resolution": ">=2x input"
+                }
+            }
+        },
+        {
+            "stage": 4,
+            "name": "alpha_mask_generation",
+            "model": "qwen-image-edit",
+            "prompt": {
+                "summary": "Produce a high-precision black & white mask (white = object filled, black = background) suitable as an alpha channel for the Stage 3 image.",
+                "instructions": "INPUT: the Stage 3 image. TASK: produce a single-channel black-and-white mask where: - Object (all visible object pixels from Stage 3) = white (#FFFFFF). - Background (everything outside the object) = black (#000000). - Edges must be crisp, but include a 1–2 px anti-aliased transition (grayscale ramp) for clean compositing. - Fill holes inside the object shape (e.g., screw holes that are part of object interior should be white unless they are truly transparent holes; if the object has intentional holes that should be transparent in final alpha, keep them black). - Do not include any of the tag colors as separate channels — this is a pure mask. - Output must be lossless PNG (single channel or 8-bit grayscale) named to correspond with Stage 3 image. Also provide a version with 1-pixel and 3-pixel binary-eroded variants (optional) for compositing flexibility.",
+                "mask_rules": {
+                    "foreground_white": "#FFFFFF",
+                    "background_black": "#000000",
+                    "anti_alias_px": 1,
+                    "eroded_variants": [
+                        1,
+                        3
+                    ]
+                },
+                "output_settings": {
+                    "format": "png",
+                    "channels": "grayscale_8bit",
+                    "deliverables": [
+                        "mask_strict.png",
+                        "mask_erode_1px.png",
+                        "mask_erode_3px.png"
+                    ]
+                }
+            }
+        }
+    ]
 }
-}
-},
-{
-"stage": 1.5,
-"name": "interior_cavity_isolation",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Isolate the interior cavity of a transparent container (e.g., glass-front cabinet) when detected by VLM; remove all exterior shell and contents to produce a clean, empty interior render for later recomposition.",
-"instructions": "INPUT: The Stage 1 image (isolated object on gray background). CONDITION: Only execute if the VLM field {{is_transparent_container}} is set to true. TASKS (do all): 1) Detect the interior cavity using the VLM field {{object_description}} and input image(s). If multiple views are provided, fuse them to infer a consistent 3D interior geometry. Infer a precise mask of the cavity space. 2) Remove the entire exterior shell: eliminate outer frames, edges, legs, feet, base trims, and any surfaces that are part of the exterior-only structure. Do NOT remove fixed internal components such as shelves, dividers, or back panels — these must remain visible. 3) Remove all removable contents from inside the cavity (e.g., bottles, boxes, utensils, decorative items) — produce a clean, empty interior. 4) Preserve the original surface materials, colors, and textures of the interior surfaces — do NOT alter, smooth, or stylize them. Maintain the same visual fidelity as in the original object. 5) Reorient the interior view to match the camera angle of the original object (same pitch, yaw, perspective) — maintain consistency with Stage 1 output. 6) Center the cavity in frame and scale to fill canvas without clipping. 7) Replace background with uniform mid-gray void: hex #808080. 8) Output a high-resolution PNG, sRGB, with embedded alpha/mask if supported. DELIVERABLE: A clean, empty interior cavity rendering — only structural interior elements visible, no exterior shell, no contents, no material changes.",
-"placeholders": {
-"is_transparent_container": "{{is_transparent_container}}",
-"object_description": "{{object_description}}"
-},
-"output_settings": {
-"background": "#808080",
-"canvas_padding_percent": 7,
-"preserve_alpha": true,
-"format": "png",
-"min_resolution": ">=2x input"
-}
-}
-},
-{
-"stage": 2,
-"name": "material_tag_replacement_mirror_only",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Conditionally replace only mirrored/reflective surfaces with an opaque neon-blue tag color. Do NOT modify glass or clear plastic here; those are handled upstream by gpt-image-1.",
-"instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_mirror}} == true. TASKS (do all when condition true):\n\n1) Detect mirrored surfaces (mirror panes, chrome-like areas that act as mirrors, highly specular planar reflections). Be conservative: only select pixels that visually correspond to mirror/true reflective surfaces.  \n\n2) Replace each detected mirror region with a pure opaque neon blue tag color: hex #1E90FF. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag.  \n\n3) Preserve all non-mirror materials exactly as they appear in Stage 1 (do NOT recolor glass, clear plastic, stainless steel, wood, paint, etc.). Glass and clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config.  \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged.  \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_mirror}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
-"conditional_rules_example": {
-"if_has_mirror": "replace mirror pixels -> #1E90FF (opaque flat fill)",
-"do_not_modify": [
-"glass",
-"clear_plastic",
-"stainless_steel",
-"other_materials"
-],
-"edge_feather_px": 1
-},
-"placeholders": {
-"has_mirror": "{{has_mirror}}",
-"has_stainless_steel": "{{has_stainless_steel}}"
-},
-"output_settings": {
-"format": "png",
-"color_space": "sRGB",
-"preserve_alpha": true,
-"tag_color_mirror": "#1E90FF",
-"tag_edge_feather_px_min": 1,
-"tag_edge_feather_px_max": 2,
-"background_keep": "#808080"
-}
-}
-},
-"stage": 2,
-"name": "material_tag_replacement_countertop_only",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Conditionally replace only mirrored/reflective surfaces with an opaque neon-blue tag color. Do NOT modify glass or clear plastic here; those are handled upstream by gpt-image-1.",
-"instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_mirror}} == true. TASKS (do all when condition true):\n\n1) Detect countertop surfaces (patterned surfaces on top of counters). Be conservative: only select pixels that visually correspond to countertop.  \n\n2) Replace each detected countertop region with a pure opaque orange tag color: hex #FF8000. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag.  \n\n3) Preserve all non-countertop materials exactly as they appear in Stage 1 (do NOT recolor glass, clear plastic, stainless steel, wood, paint, etc.). Glass and clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config.  \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged.  \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_countertop}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
-"conditional_rules_example": {
-"if_has_countertop": "replace countertop pixels -> #FF8000 (opaque flat fill)",
-"do_not_modify": [
-"glass",
-"clear_plastic",
-"stainless_steel",
-"other_materials"
-],
-"edge_feather_px": 1
-},
-"placeholders": {
-"has_mirror": "{{has_mirror}}",
-"has_stainless_steel": "{{has_stainless_steel}}".
-“has_countertop”: “{{has_countertop}}”
-},
-"output_settings": {
-"format": "png",
-"color_space": "sRGB",
-"preserve_alpha": true,
-"tag_color_countertop": "#FF8000",
-"tag_edge_feather_px_min": 1,
-"tag_edge_feather_px_max": 2,
-"background_keep": "#808080"
-}
-}
-},
-"stage": 2,
-"name": "material_tag_replacement_glass_only",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Conditionally replace only glass surfaces with an opaque magenta tag color.",
-"instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_glass}} == true. TASKS (do all when condition true):\n\n1) Detect glass surfaces (clear and transparent surfaces with some reflectiveness). YOU MUST BE CONSERVATIVE: YOU SHOULD ONLY SELECT PIXELS THAT VISUALLY CORRESPOND TO GLASS!!  \n\n2) Replace each detected glass region with a pure opaque magenta tag color: hex #FF00FF. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag.  \n\n3) Preserve all non-glass materials exactly as they appear in Stage 1 (do NOT recolor clear plastic, stainless steel, wood, paint, etc.). Everything else but glass MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config.  \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged.  \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_glass}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
-"conditional_rules_example": {
-"if_has_glass": "replace glass pixels -> #FF00FF (opaque flat fill)",
-"do_not_modify": [
-"clear_plastic",
-"stainless_steel",
-"other_materials"
-],
-"edge_feather_px": 1
-},
-"placeholders": {
-"has_glass": "{{has_glass}}",
-"has_stainless_steel": "{{has_stainless_steel}}".
-“has_countertop”: “{{has_countertop}}”
-},
-"output_settings": {
-"format": "png",
-"color_space": "sRGB",
-"preserve_alpha": true,
-"tag_color_glass": "#FF00FF",
-"tag_edge_feather_px_min": 1,
-"tag_edge_feather_px_max": 2,
-"background_keep": "#808080"
-}
-}
-},
-"stage": 2,
-"name": "material_tag_replacement_clear_plastic_only",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Conditionally replace only clear plastic surfaces with an opaque neon green tag color.",
-"instructions": "INPUT: the Stage 1 image (isolated object on #808080) and the Stage 1 precise object mask (or infer a fine mask if missing). CONDITION: Execute pixel replacement ONLY if {{has_clear_plastic}} == true. TASKS (do all when condition true):\n\n1) Detect clear plastic surfaces (clear and transparent surfaces with some reflectiveness and some matteness). YOU MUST BE CONSERVATIVE: YOU SHOULD ONLY SELECT PIXELS THAT VISUALLY CORRESPOND TO CLEAR PLASTIC!!  \n\n2) Replace each detected clear plastic region with a pure opaque neon green tag color: hex #39FF14. The replacement must be a flat, fully opaque fill (alpha = 1.0 for those pixels), with no texture, no specular highlights, and no underlying scene detail visible through the tag.  \n\n3) Preserve all non-clear-plastic materials exactly as they appear in Stage 1 (do NOT recolor glass, stainless steel, wood, paint, etc.). Everything else but clear plastic MUST NOT be altered in this stage. Stainless steel should remain unchanged by default unless you explicitly instruct tagging of stainless steel in downstream config.  \n\n4) Use anti-aliased tag edges with a small feather (1–2 px) to avoid hard aliasing; do not expand tag regions beyond true material boundaries. Keep the Stage 1 mid-gray background (#808080) unchanged.  \n\n5) Output: PNG, sRGB, preserve alpha channel if available. Return the edited RGB image plus the updated alpha/mask representing tag regions if the editor supports it.\n\nFALLBACK: If {{has_clear_plastic}} == false, skip replacements and return the Stage 1 image unchanged (with a short metadata flag indicating skipped=true).",
-"conditional_rules_example": {
-"if_has_clear_plastic": "replace clear plastic pixels -> #39FF14 (opaque flat fill)",
-"do_not_modify": [
-"glass",
-“mirror”,
-"stainless_steel",
-"other_materials"
-],
-"edge_feather_px": 1
-},
-"placeholders": {
-"has_glass": "{{has_glass}}",
-"has_clear_plastic": "{{has_clear_plastic}}".
-“has_countertop”: “{{has_countertop}}”
-},
-"output_settings": {
-"format": "png",
-"color_space": "sRGB",
-"preserve_alpha": true,
-"tag_color_clear_plastic": "#39FF14",
-"tag_edge_feather_px_min": 1,
-"tag_edge_feather_px_max": 2,
-"background_keep": "#808080"
-}
-}
-},
-{
-"stage": 3,
-"name": "clean_and_soften_diffuse",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Soften forms, clean up contours, remove lighting and shadows for perfectly diffuse, even lighting; keep tag colors from Stage 2 visible; ensure shapes are smooth and slightly rounded.",
-"instructions": "INPUT: the Stage 2 image (with any tag colors applied). TASKS (do all): 1) Remove all directional lighting, reflections, highlights, speculars and shadows — produce perfectly diffuse, even lighting across the object (no visible shadows). 2) Render in a soft, rounded 3D clay-like style with smooth shading, and no outlines. Geometry edges should be softened and slightly inflated, similar to a stylized product render. Avoid hard lines and ambient occlusion. 5) Remove any ambient occlusion or cast shadows; produce a neutral-looking product rendering that reads clearly on flat gray background (keep the same background #808080). 6) The output should be like a clean, rounded, clay-rendered object. 7) Output a high-detail PNG, sRGB, preserve alpha if available.",
-"quality_constraints": {
-"lighting": "perfectly diffuse",
-"shadows": "none",
-"surface_noise": "remove",
-"edge_smoothness": "slightly rounded, natural",
-"retain_tags": true
-},
-"placeholders": {
-},
-"output_settings": {
-"format": "png",
-"preserve_alpha": true,
-"min_resolution": ">=2x input"
-}
-}
-},
-{
-"stage": 4,
-"name": "alpha_mask_generation",
-"model": "qwen-image-edit",
-"prompt": {
-"summary": "Produce a high-precision black & white mask (white = object filled, black = background) suitable as an alpha channel for the Stage 3 image.",
-"instructions": "INPUT: the Stage 3 image. TASK: produce a single-channel black-and-white mask where: - Object (all visible object pixels from Stage 3) = white (#FFFFFF). - Background (everything outside the object) = black (#000000). - Edges must be crisp, but include a 1–2 px anti-aliased transition (grayscale ramp) for clean compositing. - Fill holes inside the object shape (e.g., screw holes that are part of object interior should be white unless they are truly transparent holes; if the object has intentional holes that should be transparent in final alpha, keep them black). - Do not include any of the tag colors as separate channels — this is a pure mask. - Output must be lossless PNG (single channel or 8-bit grayscale) named to correspond with Stage 3 image. Also provide a version with 1-pixel and 3-pixel binary-eroded variants (optional) for compositing flexibility.",
-"mask_rules": {
-"foreground_white": "#FFFFFF",
-"background_black": "#000000",
-"anti_alias_px": 1,
-"eroded_variants": [1, 3]
-},
-"output_settings": {
-"format": "png",
-"channels": "grayscale_8bit",
-"deliverables": [
-"mask_strict.png",
-"mask_erode_1px.png",
-"mask_erode_3px.png"
-]
-}
-}
-}
-]
