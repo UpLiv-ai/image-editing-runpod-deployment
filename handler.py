@@ -3,6 +3,7 @@ import json
 import torch
 import runpod
 import base64
+from pathlib import Path
 from io import BytesIO
 from PIL import Image, ImageOps
 import math
@@ -51,9 +52,12 @@ def load_model():
     when the worker cold starts.
     """
     global pipe
-    
-    model_name = "/workspace/models/Qwen-Image-Edit"
-    lora_path = "/workspace/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
+    if os.path.exists('/runpod-volume'):
+        base_volume_path = Path('/runpod-volume')
+    else:
+        base_volume_path = Path('/workspace')
+    model_name = base_volume_path + "/models/Qwen-Image-Edit"
+    lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
 
     print("Starting model load...")
     
