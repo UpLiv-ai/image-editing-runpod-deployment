@@ -148,7 +148,7 @@ if __name__ == "__main__":
         # --- 3. Simulate a serverless job payload ---
         test_job = {
             "input": {
-                "prompt": "Turn his shirt into a red t-shirt",
+                "prompt": "Convert this into 3d claymation-esk version of the main object in the image.",
                 "image": encoded_string,
                 "seed": 1234,
                 "steps": 8,

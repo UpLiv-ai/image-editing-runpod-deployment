@@ -53,13 +53,22 @@ print(f"Loading pipeline from: {MODEL_PATH} ... (this may take a while)")
 pipe = QwenImageEditPipeline.from_pretrained(
     MODEL_PATH,
     torch_dtype=dtype,
-    device_map="auto",
+    device_map="cuda",
     offload_folder=OFFLOAD_FOLDER,
     low_cpu_mem_usage=True,   # helps reduce memory during load
 )
-pipe = pipe.to(device)
+# pipe = pipe.to(device)
+# Inspect placement
+print("HF device map:", getattr(pipe, "hf_device_map", None))
 pipe.safety_checker = None  # optional: disable safety checker if not needed or not available
 
+# If xformers installed:
+try:
+    pipe.enable_xformers_memory_efficient_attention()
+    print("Enabled xFormers attention.")
+except Exception as e:
+    print("xFormers not enabled:", e)
+    
 # ----------------- Prepare inputs -----------------
 if not os.path.isfile(INPUT_IMAGE):
     raise FileNotFoundError(f"Input image not found: {INPUT_IMAGE}")
