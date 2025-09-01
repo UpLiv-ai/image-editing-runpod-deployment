@@ -1,0 +1,13 @@
+Description of the provided texture:  {{VLM Output}}
+
+Generate a high-resolution, seamless top-down texture from the provided image, guided by the following instructions:
+
+- Correct perspective distortion using the vanishing point and plane orientation data.
+- Remove all obstructions (e.g., outlets, fixtures) via inpainting, matching surrounding texture patterns.
+- Preserve the exact color palette and variation levels as described in the JSON (especially mottling, veining, or grain).
+- Maintain tile shape, grout width, and any decorative elements exactly as specified.
+- Do not smooth or homogenize the texture — retain all natural imperfections and material-specific randomness.
+- Ensure seamless tiling by aligning edges and repeating patterns naturally.
+- Use the original image as a reference for detail, but correct geometry and remove artifacts.
+
+Output: PNG, 4096x4096, transparent background if applicable.

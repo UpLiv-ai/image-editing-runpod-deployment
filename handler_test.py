@@ -39,7 +39,7 @@ def load_model():
     global pipe
     
     model_name = "/workspace/models/Qwen-Image-Edit"
-    lora_path = "/workspace/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safensors"
+    lora_path = "/workspace/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
 
     print("Starting model load...")
     
@@ -59,9 +59,10 @@ def load_model():
     pipe = QwenImageEditPipeline.from_pretrained(
         model_name, transformer=model, scheduler=scheduler, torch_dtype=torch_dtype
     )
+    pipe.to(device)
     
     pipe.load_lora_weights(lora_path)
-    pipe.to(device)
+    
     
     print("Model loaded successfully.")
     return pipe
