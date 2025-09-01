@@ -74,11 +74,6 @@ def load_model():
         model_name, transformer=model, scheduler=scheduler, torch_dtype=torch_dtype
     )
     
-    # FIX: Move pipeline to GPU before loading LoRA. Your implementation of this
-    # was already correct. Moving the pipe to the GPU first is the right way to
-    # speed up LoRA weight patching. The initial 10-minute load time is likely a
-    # one-time cost on cold start as the model and LoRA weights are patched in memory.
-    # Subsequent "warm" inferences will be much faster.
     pipe.to(device)
     
     print("Loading LoRA weights...")
@@ -91,24 +86,23 @@ def run_inference(prompt, image, seed):
     """Helper function to run a single generation step."""
     generator = torch.Generator(device=device).manual_seed(seed)
     
-    # Ensure the input image is a PIL image, not a list
     if isinstance(image, list):
         if len(image) > 0:
-            image = image[0] # Take the first image if a list is passed
+            image = image[0] 
         else:
             raise ValueError("run_inference received an empty list for the image argument.")
 
     input_args = {
         "image": image,
-        "prompt": json.dumps(prompt), # Prompts are JSON objects
+        "prompt": json.dumps(prompt), 
         "generator": generator,
         "true_cfg_scale": 1.0,
         "negative_prompt": " ",
         "num_inference_steps": 8,
     }
     print(f"Running inference for: {prompt.get('summary', 'N/A')}")
-    # The pipeline returns a list of images, we want the first one.
-    output_images = pipe(**input_args).images[0] # FIX: The pipeline returns a list, so we get the first image
+
+    output_images = pipe(**input_args).images[0]
     print("Inference step complete.")
     return output_images
 
@@ -116,32 +110,38 @@ def fill_prompt_placeholders(prompt_template, vlm_data):
     """Replaces {{placeholders}} in a prompt string with data from the VLM JSON."""
     prompt_str = json.dumps(prompt_template)
     
-    # Find all placeholders like {{field_name}}
     placeholders = re.findall(r"\{\{(\w+)\}\}", prompt_str)
     
     for placeholder in placeholders:
         if placeholder in vlm_data:
             value = vlm_data[placeholder]
-            # Ensure the replacement value is a JSON-compatible string
             replacement = json.dumps(value).strip('"')
             prompt_str = prompt_str.replace(f"{{{{{placeholder}}}}}", replacement)
             
     return json.loads(prompt_str)
 
 def threshold_and_apply_alpha(rgb_image, mask_image, threshold=10):
-    """Converts a mask to B&W, thresholds it, and applies it as an alpha channel."""
-    print("Applying threshold and alpha channel...")
-    # Convert mask to grayscale and apply threshold
-    mask_l = mask_image.convert("L")
-    alpha_mask = mask_l.point(lambda p: 255 if p > threshold else 0)
+    """
+    Applies a generated mask to an RGB image to create a final image with a
+    transparent background.
+    """
+    print("Applying threshold and creating transparent image...")
+    # 1. Prepare the mask: Convert to grayscale and apply a threshold to ensure it's binary.
+    #    White areas (object) will be kept, black areas (background) will become transparent.
+    grayscale_mask = mask_image.convert("L")
+    binary_mask = grayscale_mask.point(lambda p: 255 if p > threshold else 0)
 
-    # Ensure the main image is in RGBA format
-    rgba_image = rgb_image.convert("RGBA")
+    # 2. Create a new, fully transparent image of the same size.
+    #    The (0, 0, 0, 0) represents RGBA values, with the alpha channel at 0.
+    transparent_background = Image.new("RGBA", rgb_image.size, (0, 0, 0, 0))
+
+    # 3. Paste the original RGB image onto the transparent background.
+    #    The 'binary_mask' argument ensures that only the white parts of the mask
+    #    (the object) are pasted from the rgb_image.
+    transparent_background.paste(rgb_image, (0, 0), mask=binary_mask)
     
-    # Apply the thresholded mask as the alpha channel
-    rgba_image.putalpha(alpha_mask)
-    print("Alpha channel applied.")
-    return rgba_image
+    print("Transparent background applied successfully.")
+    return transparent_background
 
 def handler(job):
     """Main function that RunPod serverless calls for each job."""
@@ -155,15 +155,15 @@ def handler(job):
     # --- Parse Inputs ---
     model_gen = job_input.get('model_gen', True)
     vlm_output = job_input.get('vlm_output', {})
-    base64_images = job_input.get('images', []) # Expect a list
+    base64_images = job_input.get('images', [])
     seed = job_input.get('seed', 42)
+    # Check for the local testing flag
+    is_local_test = job_input.get('local_test', False)
 
     if not base64_images:
         return {"error": "Input 'images' list cannot be empty."}
 
     try:
-        # FIX: Decode the FIRST image from the list. b64decode expects a single
-        # string, not a list of strings.
         initial_image = Image.open(BytesIO(base64.b64decode(base64_images[0]))).convert("RGB")
     except Exception as e:
         return {"error": f"Failed to decode base64 image: {e}"}
@@ -177,17 +177,19 @@ def handler(job):
         stage1_prompt = fill_prompt_placeholders(OBJECT_PROMPTS['isolate_and_reorient'], vlm_output)
         stage1_image = run_inference(stage1_prompt, initial_image, seed)
         
-        images_to_process = [(stage1_image, False)] # (image, has_skipped_stage2)
+        images_to_process = [(stage1_image, False)]
 
         # STAGE 1.5: Interior Cavity (Conditional)
         if vlm_output.get('is_transparent_container', False):
             print("Condition met: is_transparent_container is true. Running Stage 1.5.")
             stage1_5_prompt = fill_prompt_placeholders(OBJECT_PROMPTS['interior_cavity_isolation'], vlm_output)
             stage1_5_image = run_inference(stage1_5_prompt, stage1_image, seed)
-            images_to_process.append((stage1_5_image, True)) # This path skips stage 2
+            images_to_process.append((stage1_5_image, True)) 
         
         final_outputs = []
-        for current_image, skip_stage_2 in images_to_process:
+        debug_masks_b64 = []
+
+        for i, (current_image, skip_stage_2) in enumerate(images_to_process):
             
             stage2_image = current_image
             if not skip_stage_2:
@@ -210,14 +212,22 @@ def handler(job):
 
             # STAGE 3: Clean and Soften
             print("--- Starting Stage 3 ---")
-            stage3_prompt = OBJECT_PROMPTS['clean_and_soften_diffuse'] # No placeholders
+            stage3_prompt = OBJECT_PROMPTS['clean_and_soften_diffuse']
             stage3_image = run_inference(stage3_prompt, stage2_image, seed)
 
             # STAGE 4: Alpha Mask Generation
             print("--- Starting Stage 4 ---")
-            stage4_prompt = OBJECT_PROMPTS['alpha_mask_generation'] # No placeholders
+            stage4_prompt = OBJECT_PROMPTS['alpha_mask_generation']
             stage4_mask = run_inference(stage4_prompt, stage3_image, seed)
             
+            # If local_test is True, encode the mask for output
+            if is_local_test:
+                print(f"Encoding debug mask for image {i}...")
+                buffered_mask = BytesIO()
+                stage4_mask.save(buffered_mask, format="PNG")
+                mask_str = base64.b64encode(buffered_mask.getvalue()).decode("utf-8")
+                debug_masks_b64.append(mask_str)
+
             # Final Compositing
             final_image = threshold_and_apply_alpha(stage3_image, stage4_mask)
             final_outputs.append(final_image)
@@ -229,15 +239,17 @@ def handler(job):
             img.save(buffered, format="PNG")
             output_images_b64.append(base64.b64encode(buffered.getvalue()).decode("utf-8"))
             
-        return {"images": output_images_b64}
+        return_payload = {"images": output_images_b64}
+        if is_local_test and debug_masks_b64:
+            return_payload["debug_masks"] = debug_masks_b64
+        
+        return return_payload
 
     else:
         # --- TEXTURE PIPELINE ---
         print("--- Starting Texture Pipeline ---")
         prompt_str = TEXTURE_PROMPT.replace('{{VLM Output}}', json.dumps(vlm_output))
         
-        # The texture prompt is a string, but our inference function expects a JSON object
-        # We wrap it in a simple structure.
         texture_prompt_obj = {"summary": "Generate a seamless texture.", "instructions": prompt_str}
         
         output_image = run_inference(texture_prompt_obj, initial_image, seed)
@@ -256,9 +268,8 @@ if __name__ == "__main__":
     print("--- Starting local test ---")
 
     # --- Configuration for Local Test ---
-    test_image_paths = ["Test_of_Qwen.png"] # IMPORTANT: Change this to your test image(s)
+    test_image_paths = ["Test_of_Qwen.png"]
     
-    # Sample VLM output for testing the object pipeline
     sample_vlm_object_data = {
         "object_description": "A gray plastic bin with hexagonal holes",
         "is_transparent_container": False,
@@ -291,18 +302,27 @@ if __name__ == "__main__":
                 "model_gen": True,
                 "vlm_output": sample_vlm_object_data,
                 "images": encoded_images,
-                "seed": 42
+                "seed": 42,
+                "local_test": True  # Flag to enable debug outputs
             }
         }
         object_result = handler(object_job)
         if "error" in object_result:
             print(f"Object pipeline test failed: {object_result['error']}")
         else:
+            # Save the final composed images
             for i, img_b64 in enumerate(object_result.get("images", [])):
                 output_filename = f"test_output_object_{i}.png"
                 with open(output_filename, "wb") as f:
                     f.write(base64.b64decode(img_b64))
                 print(f"Object pipeline output saved to {output_filename}")
+            
+            # Save the debug masks if they exist
+            for i, mask_b64 in enumerate(object_result.get("debug_masks", [])):
+                mask_filename = f"test_output_mask_{i}.png"
+                with open(mask_filename, "wb") as f:
+                    f.write(base64.b64decode(mask_b64))
+                print(f"Debug mask saved to {mask_filename}")
 
         # --- Test 2: Texture Pipeline ---
         print("\n--- Testing Texture Pipeline (model_gen=False) ---")
@@ -318,13 +338,10 @@ if __name__ == "__main__":
         if "error" in texture_result:
             print(f"Texture pipeline test failed: {texture_result['error']}")
         else:
-            # FIX: Handle the list of images returned by the handler.
-            # We expect one image, so we take the first element.
             img_b64_list = texture_result.get("images", [])
             if img_b64_list:
                 output_filename = "test_output_texture.png"
                 with open(output_filename, "wb") as f:
-                    # FIX: Decode the first element of the list, not the list itself.
                     f.write(base64.b64decode(img_b64_list[0]))
                 print(f"Texture pipeline output saved to {output_filename}")
             else:
