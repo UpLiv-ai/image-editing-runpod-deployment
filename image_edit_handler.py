@@ -265,92 +265,88 @@ def handler(job):
         return {"images": [img_str]}
 
 
-# --- Start the RunPod Serverless Worker ---
-# This line starts the worker and registers the handler function.
-runpod.serverless.start({"handler": handler})
-
 # ---------------------------------------------------------------------------- #
 #                                Local Testing                                 #
 # ---------------------------------------------------------------------------- #
-# if __name__ == "__main__":
-#     print("--- Starting local test ---")
+if __name__ == "__main__":
+    print("--- Starting local test ---")
 
-#     # --- Configuration for Local Test ---
-#     test_image_paths = ["Test_of_Qwen.png"]
+    # --- Configuration for Local Test ---
+    test_image_paths = ["Test_of_Qwen.png"]
     
-#     sample_vlm_object_data = {
-#         "object_description": "A gray plastic bin with hexagonal holes",
-#         "is_transparent_container": False,
-#         "has_mirror": False,
-#         "has_countertop": False,
-#         "has_glass": False,
-#         "has_clear_plastic": False
-#     }
+    sample_vlm_object_data = {
+        "object_description": "A gray plastic bin with hexagonal holes",
+        "is_transparent_container": False,
+        "has_mirror": False,
+        "has_countertop": False,
+        "has_glass": False,
+        "has_clear_plastic": False
+    }
 
-#     # --- Helper to encode images ---
-#     def encode_images_to_base64(paths):
-#         encoded = []
-#         for path in paths:
-#             try:
-#                 with open(path, "rb") as image_file:
-#                     encoded.append(base64.b64encode(image_file.read()).decode("utf-8"))
-#                 print(f"Successfully encoded image from: {path}")
-#             except FileNotFoundError:
-#                 print(f"ERROR: Test image not found at '{path}'.")
-#                 return None
-#         return encoded
+    # --- Helper to encode images ---
+    def encode_images_to_base64(paths):
+        encoded = []
+        for path in paths:
+            try:
+                with open(path, "rb") as image_file:
+                    encoded.append(base64.b64encode(image_file.read()).decode("utf-8"))
+                print(f"Successfully encoded image from: {path}")
+            except FileNotFoundError:
+                print(f"ERROR: Test image not found at '{path}'.")
+                return None
+        return encoded
 
-#     encoded_images = encode_images_to_base64(test_image_paths)
+    encoded_images = encode_images_to_base64(test_image_paths)
 
-#     if encoded_images:
-#         # --- Test 1: Object Pipeline ---
-#         print("\n--- Testing Object Pipeline (model_gen=True) ---")
-#         object_job = {
-#             "input": {
-#                 "model_gen": True,
-#                 "vlm_output": sample_vlm_object_data,
-#                 "images": encoded_images,
-#                 "seed": 42,
-#                 "local_test": True  # Flag to enable debug outputs
-#             }
-#         }
-#         object_result = handler(object_job)
-#         if "error" in object_result:
-#             print(f"Object pipeline test failed: {object_result['error']}")
-#         else:
-#             # Save the final composed images
-#             for i, img_b64 in enumerate(object_result.get("images", [])):
-#                 output_filename = f"test_output_object_{i}.png"
-#                 with open(output_filename, "wb") as f:
-#                     f.write(base64.b64decode(img_b64))
-#                 print(f"Object pipeline output saved to {output_filename}")
+    if encoded_images:
+        # --- Test 1: Object Pipeline ---
+        print("\n--- Testing Object Pipeline (model_gen=True) ---")
+        object_job = {
+            "input": {
+                "model_gen": True,
+                "vlm_output": sample_vlm_object_data,
+                "images": encoded_images,
+                "seed": 42,
+                "local_test": True  # Flag to enable debug outputs
+            }
+        }
+        object_result = handler(object_job)
+        if "error" in object_result:
+            print(f"Object pipeline test failed: {object_result['error']}")
+        else:
+            # Save the final composed images
+            for i, img_b64 in enumerate(object_result.get("images", [])):
+                output_filename = f"test_output_object_{i}.png"
+                with open(output_filename, "wb") as f:
+                    f.write(base64.b64decode(img_b64))
+                print(f"Object pipeline output saved to {output_filename}")
             
-#             # Save the debug masks if they exist
-#             for i, mask_b64 in enumerate(object_result.get("debug_masks", [])):
-#                 mask_filename = f"test_output_mask_{i}.png"
-#                 with open(mask_filename, "wb") as f:
-#                     f.write(base64.b64decode(mask_b64))
-#                 print(f"Debug mask saved to {mask_filename}")
+            # Save the debug masks if they exist
+            for i, mask_b64 in enumerate(object_result.get("debug_masks", [])):
+                mask_filename = f"test_output_mask_{i}.png"
+                with open(mask_filename, "wb") as f:
+                    f.write(base64.b64decode(mask_b64))
+                print(f"Debug mask saved to {mask_filename}")
 
-#         # --- Test 2: Texture Pipeline ---
-#         print("\n--- Testing Texture Pipeline (model_gen=False) ---")
-#         texture_job = {
-#             "input": {
-#                 "model_gen": False,
-#                 "vlm_output": {"material": "marble", "color": "white with gray veins"},
-#                 "images": encoded_images,
-#                 "seed": 42
-#             }
-#         }
-#         texture_result = handler(texture_job)
-#         if "error" in texture_result:
-#             print(f"Texture pipeline test failed: {texture_result['error']}")
-#         else:
-#             img_b64_list = texture_result.get("images", [])
-#             if img_b64_list:
-#                 output_filename = "test_output_texture.png"
-#                 with open(output_filename, "wb") as f:
-#                     f.write(base64.b64decode(img_b64_list[0]))
-#                 print(f"Texture pipeline output saved to {output_filename}")
-#             else:
-#                 print("Texture pipeline test did not return any images.")
+        # --- Test 2: Texture Pipeline ---
+        print("\n--- Testing Texture Pipeline (model_gen=False) ---")
+        texture_job = {
+            "input": {
+                "model_gen": False,
+                "vlm_output": {"material": "marble", "color": "white with gray veins"},
+                "images": encoded_images,
+                "seed": 42
+            }
+        }
+        texture_result = handler(texture_job)
+        if "error" in texture_result:
+            print(f"Texture pipeline test failed: {texture_result['error']}")
+        else:
+            img_b64_list = texture_result.get("images", [])
+            if img_b64_list:
+                output_filename = "test_output_texture.png"
+                with open(output_filename, "wb") as f:
+                    f.write(base64.b64decode(img_b64_list[0]))
+                print(f"Texture pipeline output saved to {output_filename}")
+            else:
+                print("Texture pipeline test did not return any images.")
