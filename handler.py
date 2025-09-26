@@ -53,9 +53,9 @@ def load_model():
     """
     global pipe
     if os.path.exists('/runpod-volume'):
-        base_volume_path = Path('/runpod-volume')
+        base_volume_path = '/runpod-volume'
     else:
-        base_volume_path = Path('/workspace')
+        base_volume_path = '/workspace'
     model_name = base_volume_path + "/models/Qwen-Image-Edit"
     lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
 
