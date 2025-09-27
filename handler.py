@@ -11,7 +11,7 @@ import re
 
 # --- Diffusers Imports ---
 from diffusers import (
-    QwenImageEditPipeline,
+    Qwen2ImageEditPipeline,
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.models import QwenImageTransformer2DModel
@@ -56,8 +56,8 @@ def load_model():
         base_volume_path = '/runpod-volume'
     else:
         base_volume_path = '/workspace'
-    model_name = base_volume_path + "/models/Qwen-Image-Edit"
-    lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
+    model_name = base_volume_path + "/models/Qwen-Image-Edit-2509"
+    lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V2.0.safetensors"
 
     print("Starting model load...")
     
@@ -74,7 +74,7 @@ def load_model():
     }
     scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
     
-    pipe = QwenImageEditPipeline.from_pretrained(
+    pipe = Qwen2ImageEditPipeline.from_pretrained(
         model_name, transformer=model, scheduler=scheduler, torch_dtype=torch_dtype
     )
     
