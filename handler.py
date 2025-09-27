@@ -57,7 +57,7 @@ def load_model():
     else:
         base_volume_path = '/workspace'
     model_name = base_volume_path + "/models/Qwen-Image-Edit-2509"
-    lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V2.0.safetensors"
+    lora_path = base_volume_path + "/models/Qwen-Image-Lightning/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors"
 
     print("Starting model load...")
     
