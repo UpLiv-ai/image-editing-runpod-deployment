@@ -11,7 +11,7 @@ import re
 
 # --- Diffusers Imports ---
 from diffusers import (
-    Qwen2ImageEditPipeline,
+    QwenImageEditPlusPipeline,
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.models import QwenImageTransformer2DModel
@@ -74,7 +74,7 @@ def load_model():
     }
     scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
     
-    pipe = Qwen2ImageEditPipeline.from_pretrained(
+    pipe = QwenImageEditPlusPipeline.from_pretrained(
         model_name, transformer=model, scheduler=scheduler, torch_dtype=torch_dtype
     )
     
