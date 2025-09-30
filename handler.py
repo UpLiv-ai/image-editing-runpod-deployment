@@ -176,11 +176,13 @@ def handler(job):
     if model_gen:
         # --- OBJECT PIPELINE ---
         print("--- Starting Object Pipeline ---")
-        
+        final_outputs = []
+        debug_masks_b64 = []  
+
         # STAGE 1: Isolate and Reorient
         stage1_prompt = fill_prompt_placeholders(OBJECT_PROMPTS['isolate_and_reorient'], vlm_output)
         stage1_image = run_inference(stage1_prompt, initial_image, seed)
-        
+        final_outputs.append(stage1_image)
         images_to_process = [(stage1_image, False)]
 
         # STAGE 1.5: Interior Cavity (Conditional)
@@ -188,10 +190,8 @@ def handler(job):
             print("Condition met: is_transparent_container is true. Running Stage 1.5.")
             stage1_5_prompt = fill_prompt_placeholders(OBJECT_PROMPTS['interior_cavity_isolation'], vlm_output)
             stage1_5_image = run_inference(stage1_5_prompt, stage1_image, seed)
+            final_outputs.append(stage1_5_image)
             images_to_process.append((stage1_5_image, True)) 
-        
-        final_outputs = []
-        debug_masks_b64 = []
 
         for i, (current_image, skip_stage_2) in enumerate(images_to_process):
             
@@ -211,6 +211,7 @@ def handler(job):
                         print(f"Condition met: {key} is true. Running {prompt_name}.")
                         prompt = fill_prompt_placeholders(OBJECT_PROMPTS[prompt_name], vlm_output)
                         stage2_image = run_inference(prompt, stage2_image, seed)
+                        final_outputs.append(stage2_image)
             else:
                 print("Skipping Stage 2 for transparent container interior.")
 
@@ -218,12 +219,14 @@ def handler(job):
             print("--- Starting Stage 3 ---")
             stage3_prompt = OBJECT_PROMPTS['clean_and_soften_diffuse']
             stage3_image = run_inference(stage3_prompt, stage2_image, seed)
+            final_outputs.append(stage3_image)
 
             # STAGE 4: Alpha Mask Generation
             print("--- Starting Stage 4 ---")
             stage4_prompt = OBJECT_PROMPTS['alpha_mask_generation']
             stage4_mask = run_inference(stage4_prompt, stage3_image, seed)
-            
+            final_outputs.append(stage4_mask)
+
             # If local_test is True, encode the mask for output
             if is_local_test:
                 print(f"Encoding debug mask for image {i}...")
